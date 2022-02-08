@@ -27,6 +27,7 @@ from typing import Optional
 import datasets
 import numpy as np
 from datasets import load_dataset, load_metric
+import subprocess
 
 import transformers
 from transformers import (
@@ -49,6 +50,33 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
+tokens = {
+    "<=": "LESS_OR_EQUAL",
+    ">=": "GREATER_OR_EQUAL",
+    "<": "LESSTHAN",
+    ">": "GREATERTHAN",
+    "LESSTHAN": "<less_than>",
+    "GREATERTHAN": "<greater_than>",
+    "LESS_OR_EQUAL": "<le>",
+    "GREATER_OR_EQUAL": "<ge>",
+    "==": "<double_equals>",
+    "{": "<left_curly>",
+    "}": "<right_curly>",
+    "\t": "<tab>",
+    "\n": "<newline>",
+}
+
+def uglify(doc: str) -> str:
+    for (needle, token) in tokens.items():
+        doc = doc.replace(needle, token)
+        
+    return doc
+
+def unuglify(doc: str) -> str:
+    for (needle, token) in reversed(tokens.items()):
+        doc = doc.replace(token, needle)
+        
+    return doc
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.17.0.dev0")
@@ -341,6 +369,7 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+    print(tokenizer)
     model = AutoModelForSeq2SeqLM.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -350,7 +379,13 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
+    tokenizer.add_tokens(['<left_curly>', '<right_curly>', '<less_than>', '<greater_than>', '<newline>', '<tab>', "<le>", "<ge>", "<double_equals>", " input", "input"])
     model.resize_token_embeddings(len(tokenizer))
+
+    tokens = tokenizer.tokenize("""a = int( input())<newline>b = int(input())<newline>c = int(input())<newline>k1 = a + b * c<newline>k2 = a * (b + c)<newline>k3 = a * b * c<newline>k4 = (a + b) * c<newline>k5 = a + b + c<newline>k6 = (a * b) + c<newline>print(max(k1, k2, k3, k4, k5, k6))<newline>", "opt": "a = int(input())<newline>b = int(input())<newline>c = int(input())<newline>k1 = a + b * c<newline>k2 = a * (b + c)<newline>k3 = a * b * c<newline>k4 = (a + b) * c<newline>k5 = a + b + c<newline>k7 = (a * b) + c<newline>print(max(k1, k2, k3, k4, k5, k7))<newline>""")
+    print(tokens)
+    print(tokenizer.convert_tokens_to_string(tokens))
+    exit(0)
 
     # Set decoder_start_token_id
     if model.config.decoder_start_token_id is None and isinstance(tokenizer, (MBartTokenizer, MBartTokenizerFast)):
@@ -467,7 +502,8 @@ def main():
             raise ValueError("--do_predict requires a test dataset")
         predict_dataset = raw_datasets["test"]
         if data_args.max_predict_samples is not None:
-            predict_dataset = predict_dataset.select(range(data_args.max_predict_samples))
+            predict_dataset = predict_dataset.shuffle().select(range(data_args.max_predict_samples))
+        raw_test_dataset = predict_dataset
         with training_args.main_process_first(desc="prediction dataset map pre-processing"):
             predict_dataset = predict_dataset.map(
                 preprocess_function,
@@ -583,16 +619,32 @@ def main():
 
         trainer.log_metrics("predict", metrics)
         trainer.save_metrics("predict", metrics)
+        print("Saved metrics")
 
         if trainer.is_world_process_zero():
             if training_args.predict_with_generate:
+                print("batch_decode")
                 predictions = tokenizer.batch_decode(
                     predict_results.predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True
                 )
+                inputs = list(raw_test_dataset)[:len(predictions)]
+                print(inputs)
+                inputs = list(map(lambda sample: sample["translation"]["en"], inputs))
+                print(inputs)
                 predictions = [pred.strip() for pred in predictions]
                 output_prediction_file = os.path.join(training_args.output_dir, "generated_predictions.txt")
                 with open(output_prediction_file, "w", encoding="utf-8") as writer:
-                    writer.write("\n".join(predictions))
+                    for (original, prediction) in zip(inputs, predictions):
+                        original = unuglify(original)
+                        prediction = unuglify(prediction)
+                        with open("tmp1", "w") as f:
+                            f.write(original)
+                        with open("tmp2", "w") as f:
+                            f.write(prediction)
+                        diff = subprocess.run("git diff --no-index --color --word-diff tmp1 tmp2".split(), capture_output=True).stdout.decode('utf-8')
+                        diff = '\n'.join(diff.split('\n')[5:])
+                        divider = "----------------------------------------"
+                        writer.write(f"\n{divider}\nInput\n{original}\n\nOutput\n{prediction}\n\nDiff\n{diff}")
 
     kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "translation"}
     if data_args.dataset_name is not None:

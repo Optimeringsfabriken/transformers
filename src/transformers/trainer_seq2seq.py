@@ -20,7 +20,7 @@ from torch.utils.data import Dataset
 
 from .deepspeed import is_deepspeed_zero3_enabled
 from .trainer import Trainer
-from .trainer_utils import PredictionOutput
+from .trainer_utils import PredictionOutput, set_seed
 from .utils import logging
 
 
@@ -157,7 +157,10 @@ class Seq2SeqTrainer(Trainer):
         # XXX: adapt synced_gpus for fairscale as well
         gen_kwargs = {
             "max_length": self._max_length if self._max_length is not None else self.model.config.max_length,
-            "num_beams": self._num_beams if self._num_beams is not None else self.model.config.num_beams,
+            #"num_beams": self._num_beams if self._num_beams is not None else self.model.config.num_beams,
+            "do_sample": True,
+            "top_k": 0,
+            "temperature": 0.00000001,
             "synced_gpus": True if is_deepspeed_zero3_enabled() else False,
         }
 
@@ -169,6 +172,7 @@ class Seq2SeqTrainer(Trainer):
         else:
             generation_inputs = inputs[self.model.main_input_name]
 
+        set_seed(42)
         generated_tokens = self.model.generate(
             generation_inputs,
             attention_mask=inputs.get("attention_mask", None),
