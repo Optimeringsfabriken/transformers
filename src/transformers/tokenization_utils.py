@@ -931,6 +931,7 @@ class PreTrainedTokenizer(PreTrainedTokenizerBase):
         # To avoid mixing byte-level and unicode for byte-level BPT
         # we need to build string separately for added tokens and byte-level tokens
         # cf. https://github.com/huggingface/transformers/issues/1133
+        print("AAAA")
         sub_texts = []
         current_sub_text = []
         for token in filtered_tokens:

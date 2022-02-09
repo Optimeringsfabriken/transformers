@@ -160,7 +160,7 @@ class Seq2SeqTrainer(Trainer):
             #"num_beams": self._num_beams if self._num_beams is not None else self.model.config.num_beams,
             "do_sample": True,
             "top_k": 0,
-            "temperature": 0.00000001,
+            "temperature": 0.5,
             "synced_gpus": True if is_deepspeed_zero3_enabled() else False,
         }
 

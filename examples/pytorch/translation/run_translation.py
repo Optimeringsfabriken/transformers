@@ -20,6 +20,7 @@ Fine-tuning the library models for sequence to sequence.
 
 import logging
 import os
+import random
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
@@ -28,6 +29,7 @@ import datasets
 import numpy as np
 from datasets import load_dataset, load_metric
 import subprocess
+import black
 
 import transformers
 from transformers import (
@@ -51,19 +53,9 @@ from transformers.utils import check_min_version
 from transformers.utils.versions import require_version
 
 tokens = {
-    "<=": "LESS_OR_EQUAL",
-    ">=": "GREATER_OR_EQUAL",
-    "<": "LESSTHAN",
-    ">": "GREATERTHAN",
-    "LESSTHAN": "<less_than>",
-    "GREATERTHAN": "<greater_than>",
-    "LESS_OR_EQUAL": "<le>",
-    "GREATER_OR_EQUAL": "<ge>",
-    "==": "<double_equals>",
-    "{": "<left_curly>",
-    "}": "<right_curly>",
-    "\t": "<tab>",
-    "\n": "<newline>",
+    " ": "▂",
+    "\t": "░",
+    "\n": "▞"
 }
 
 def uglify(doc: str) -> str:
@@ -379,13 +371,21 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    tokenizer.add_tokens(['<left_curly>', '<right_curly>', '<less_than>', '<greater_than>', '<newline>', '<tab>', "<le>", "<ge>", "<double_equals>", " input", "input"])
-    model.resize_token_embeddings(len(tokenizer))
+    # additional_tokens = [line.split()[0].replace("▁", " ") for line in open("/home/ubuntu/code-optimizer/m.vocab").read().strip().split("\n")]
+    # additional_tokens = additional_tokens[3:]
+    # additional_tokens.sort(key=lambda s: -len(s))
+    # print(additional_tokens)
+    # additional_tokens.append("\n")
+    # additional_tokens.append("<tab>")
 
-    tokens = tokenizer.tokenize("""a = int( input())<newline>b = int(input())<newline>c = int(input())<newline>k1 = a + b * c<newline>k2 = a * (b + c)<newline>k3 = a * b * c<newline>k4 = (a + b) * c<newline>k5 = a + b + c<newline>k6 = (a * b) + c<newline>print(max(k1, k2, k3, k4, k5, k6))<newline>", "opt": "a = int(input())<newline>b = int(input())<newline>c = int(input())<newline>k1 = a + b * c<newline>k2 = a * (b + c)<newline>k3 = a * b * c<newline>k4 = (a + b) * c<newline>k5 = a + b + c<newline>k7 = (a * b) + c<newline>print(max(k1, k2, k3, k4, k5, k7))<newline>""")
-    print(tokens)
-    print(tokenizer.convert_tokens_to_string(tokens))
-    exit(0)
+    # tokenizer.add_tokens(['<left_curly>', '<right_curly>', '<less_than>', '<greater_than>', '<newline>', '<tab>', "<le>", "<ge>", "<double_equals>", " input", "input"])
+    # tokenizer.add_tokens(additional_tokens)
+    # model.resize_token_embeddings(len(tokenizer))
+
+    # tokens = tokenizer.tokenize("""a=input()\nfor i in range(int(a)):\n\tprint(f\"Hello{}\")""")
+    # print(tokens)
+    # print(tokenizer.convert_tokens_to_string(tokens))
+    # exit(0)
 
     # Set decoder_start_token_id
     if model.config.decoder_start_token_id is None and isinstance(tokenizer, (MBartTokenizer, MBartTokenizerFast)):
@@ -502,7 +502,7 @@ def main():
             raise ValueError("--do_predict requires a test dataset")
         predict_dataset = raw_datasets["test"]
         if data_args.max_predict_samples is not None:
-            predict_dataset = predict_dataset.shuffle().select(range(data_args.max_predict_samples))
+            predict_dataset = predict_dataset.shuffle(seed=1).select(range(data_args.max_predict_samples))
         raw_test_dataset = predict_dataset
         with training_args.main_process_first(desc="prediction dataset map pre-processing"):
             predict_dataset = predict_dataset.map(
@@ -539,7 +539,7 @@ def main():
         preds, labels = eval_preds
         if isinstance(preds, tuple):
             preds = preds[0]
-        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
+        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True, spaces_between_special_tokens=False)
         if data_args.ignore_pad_token_for_loss:
             # Replace -100 in the labels as we can't decode them.
             labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
@@ -625,18 +625,21 @@ def main():
             if training_args.predict_with_generate:
                 print("batch_decode")
                 predictions = tokenizer.batch_decode(
-                    predict_results.predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True
+                    predict_results.predictions, skip_special_tokens=True, clean_up_tokenization_spaces=False, spaces_between_special_tokens=False
                 )
+                print(tokenizer._tokenizer)
                 inputs = list(raw_test_dataset)[:len(predictions)]
-                print(inputs)
                 inputs = list(map(lambda sample: sample["translation"]["en"], inputs))
-                print(inputs)
                 predictions = [pred.strip() for pred in predictions]
                 output_prediction_file = os.path.join(training_args.output_dir, "generated_predictions.txt")
                 with open(output_prediction_file, "w", encoding="utf-8") as writer:
                     for (original, prediction) in zip(inputs, predictions):
                         original = unuglify(original)
                         prediction = unuglify(prediction)
+                        try:
+                            prediction = black.format_str(prediction, mode=black.mode.Mode(line_length=2000))
+                        except Exception as e:
+                            print(e)
                         with open("tmp1", "w") as f:
                             f.write(original)
                         with open("tmp2", "w") as f:
