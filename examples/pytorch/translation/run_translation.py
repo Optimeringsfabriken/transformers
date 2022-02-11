@@ -649,6 +649,13 @@ def main():
                         divider = "----------------------------------------"
                         writer.write(f"\n{divider}\nInput\n{original}\n\nOutput\n{prediction}\n\nDiff\n{diff}")
 
+                output_prediction_file = os.path.join(training_args.output_dir, "raw_predictions.txt")
+                with open(output_prediction_file, "w", encoding="utf-8") as writer:
+                    for prediction in predictions:
+                        prediction = unuglify(prediction)
+                        divider = "----------------------------------------"
+                        writer.write(f"\n{divider}\n{prediction}\n")
+
     kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "translation"}
     if data_args.dataset_name is not None:
         kwargs["dataset_tags"] = data_args.dataset_name

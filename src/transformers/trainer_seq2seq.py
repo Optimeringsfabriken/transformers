@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -160,7 +161,7 @@ class Seq2SeqTrainer(Trainer):
             #"num_beams": self._num_beams if self._num_beams is not None else self.model.config.num_beams,
             "do_sample": True,
             "top_k": 0,
-            "temperature": 0.5,
+            "temperature": 1.0,
             "synced_gpus": True if is_deepspeed_zero3_enabled() else False,
         }
 
@@ -172,7 +173,7 @@ class Seq2SeqTrainer(Trainer):
         else:
             generation_inputs = inputs[self.model.main_input_name]
 
-        set_seed(42)
+        set_seed(random.randint(0, 10**9))
         generated_tokens = self.model.generate(
             generation_inputs,
             attention_mask=inputs.get("attention_mask", None),
