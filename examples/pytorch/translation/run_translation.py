@@ -361,7 +361,6 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    print(tokenizer)
     model = AutoModelForSeq2SeqLM.from_pretrained(
         model_args.model_name_or_path,
         from_tf=bool(".ckpt" in model_args.model_name_or_path),
@@ -619,27 +618,22 @@ def main():
 
         trainer.log_metrics("predict", metrics)
         trainer.save_metrics("predict", metrics)
-        print("Saved metrics")
 
         if trainer.is_world_process_zero():
             if training_args.predict_with_generate:
-                print("batch_decode")
                 predictions = tokenizer.batch_decode(
                     predict_results.predictions, skip_special_tokens=True, clean_up_tokenization_spaces=False, spaces_between_special_tokens=False
                 )
-                print(tokenizer._tokenizer)
                 inputs = list(raw_test_dataset)[:len(predictions)]
                 inputs = list(map(lambda sample: sample["translation"]["en"], inputs))
                 predictions = [pred.strip() for pred in predictions]
                 output_prediction_file = os.path.join(training_args.output_dir, "generated_predictions.txt")
                 with open(output_prediction_file, "w", encoding="utf-8") as writer:
                     for (original, prediction) in zip(inputs, predictions):
-                        original = unuglify(original)
-                        prediction = unuglify(prediction)
                         try:
                             prediction = black.format_str(prediction, mode=black.mode.Mode(line_length=2000))
                         except Exception as e:
-                            print(e)
+                            print("Got exception: ", e)
                         with open("tmp1", "w") as f:
                             f.write(original)
                         with open("tmp2", "w") as f:
@@ -652,8 +646,8 @@ def main():
                 output_prediction_file = os.path.join(training_args.output_dir, "raw_predictions.txt")
                 with open(output_prediction_file, "w", encoding="utf-8") as writer:
                     for prediction in predictions:
-                        prediction = unuglify(prediction)
                         divider = "----------------------------------------"
+                        prediction = prediction.replace("α", "αα").replace(divider, "αdivider")
                         writer.write(f"\n{divider}\n{prediction}\n")
 
     kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "translation"}

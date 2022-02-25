@@ -23,6 +23,7 @@ from .deepspeed import is_deepspeed_zero3_enabled
 from .trainer import Trainer
 from .trainer_utils import PredictionOutput, set_seed
 from .utils import logging
+from datetime import datetime
 
 
 logger = logging.get_logger(__name__)
@@ -173,6 +174,7 @@ class Seq2SeqTrainer(Trainer):
         else:
             generation_inputs = inputs[self.model.main_input_name]
 
+        random.seed(datetime.now())
         set_seed(random.randint(0, 10**9))
         generated_tokens = self.model.generate(
             generation_inputs,
